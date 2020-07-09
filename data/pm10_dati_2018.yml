@@ -1,0 +1,24 @@
+..generic:
+  git2rdata: 0.2.1
+  optimize: yes
+  NA string: NA
+  sorting:
+  - id_centralina
+  - banda
+  hash: b7f64ee025024bef79165132e19c04a1ba55e835
+  data_hash: 30d85751505fb533cb20ae84cfabc48534b35625
+id_centralina:
+  class: character
+station_code:
+  class: numeric
+yymmdd:
+  class: Date
+  origin: '1970-01-01'
+banda:
+  class: numeric
+pm10:
+  class: numeric
+X:
+  class: numeric
+'Y':
+  class: numeric
