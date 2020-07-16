@@ -6,7 +6,7 @@
   - id_centralina
   - banda
   hash: b7f64ee025024bef79165132e19c04a1ba55e835
-  data_hash: 3daf15d1e872ef4768b00d22880d460544be771e
+  data_hash: dbfaeac032261105ec0cec4c014988bac24c440c
 id_centralina:
   class: character
 station_code:
