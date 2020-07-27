@@ -1,0 +1,68 @@
+..generic:
+  git2rdata: 0.2.1
+  optimize: yes
+  NA string: NA
+  sorting:
+  - id_centralina
+  - banda
+  hash: 12f1d7185fe9e3fca6f94788c747d7c32ce84183
+  data_hash: e0b59567d4611db7eed276f7349ed646c873b5de
+id_centralina:
+  class: character
+station_code:
+  class: numeric
+yymmdd:
+  class: Date
+  origin: '1970-01-01'
+banda:
+  class: numeric
+pm10:
+  class: numeric
+X:
+  class: numeric
+'Y':
+  class: numeric
+aod600:
+  class: numeric
+aod600.s:
+  class: numeric
+dust:
+  class: numeric
+dust.s:
+  class: numeric
+sp:
+  class: numeric
+sp.s:
+  class: numeric
+t2m:
+  class: numeric
+t2m.s:
+  class: numeric
+tp:
+  class: numeric
+tp.s:
+  class: numeric
+u10:
+  class: numeric
+u10.s:
+  class: numeric
+v10:
+  class: numeric
+v10.s:
+  class: numeric
+wdir:
+  class: numeric
+wdir.s:
+  class: numeric
+wspeed:
+  class: numeric
+wspeed.s:
+  class: numeric
+d_a1.s:
+  class: numeric
+q_dem.s:
+  class: numeric
+i_surface.s:
+  class: numeric
+lpm10:
+  class: numeric
