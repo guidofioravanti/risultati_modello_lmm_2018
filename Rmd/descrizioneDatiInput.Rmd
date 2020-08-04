@@ -1,0 +1,281 @@
+---
+title: Descrizione dati giornalieri di PM10, anno 2018
+date: "`r lubridate::today()`"
+author: Guido
+params:
+  MIN.NUMBER.DAILY: 10
+output: html_document
+---
+
+
+```{r intro,warning = FALSE,message=FALSE,echo=FALSE,include=FALSE}
+library("git2rdata")
+library("tidyverse")
+library("janitor")
+library("sf")
+library("sp")
+library("assertthat")
+library("knitr")
+library("gt")
+library("RPostgreSQL")
+library("rpostgis")
+
+dbDriver("PostgreSQL")->mydrv
+dbConnect(mydrv,dbname="asiispra",host="localhost",port=5432,user="guido")->mycon
+rpostgis::pgGetRast(mycon,c("rgriglia","dem"))->dem
+rpostgis::pgGetRast(mycon,c("rgriglia","cod_reg"))->cod_reg
+dbDisconnect(mycon)
+
+knitr::opts_chunk$set(warning = FALSE,message=FALSE,echo=FALSE)
+read_vc(root="./risultati_modello_lmm_2018/data/",file="pm10_dati_con_predittori_2018_04agosto2020.tsv")->dati
+
+which(dati$pm10==-999)->indiciNA
+dati[indiciNA,]$pm10<-NA
+
+read_delim("20200707_METADATI STAZIONI PM10.csv",delim=";",col_names=TRUE)->metadati
+janitor::clean_names(metadati)->metadati
+full_join(dati,metadati %>%dplyr::select(id_centralina,tipo_di_zona)) %>%
+  rename(tipo_new=tipo_di_zona) %>%
+  mutate(tipo_new=case_when(grepl("^R.*",tipo_new)~"rural",
+                            tipo_new=="U"~"urban",
+                            TRUE~"suburban"))->dati
+```
+
+## Descrizione del dataset di input
+
+Numero di centraline nel dataset di dati: `r length(unique(dati$id_centralina))`
+
+```{r completezzaSerie,include=FALSE}
+#vogliamo tenere solo le centraline che forniscono almeno MIN.NUMBER.DAILY dati validi al mese
+dati %>%
+  filter(!is.na(pm10)) %>%
+  mutate(mm=lubridate::month(yymmdd)) %>%
+  group_by(id_centralina,mm) %>%
+  summarise(contaDatiDisponibili=n()) %>%
+  ungroup() %>%
+  mutate(validi=ifelse(contaDatiDisponibili>=params$MIN.NUMBER.DAILY,1,0)) %>%
+  dplyr::select(-contaDatiDisponibili) %>%
+  filter(validi==1) %>%
+  group_by(id_centralina) %>%
+  summarise(numeroMesiValidi=n()) %>%
+  ungroup() %>%
+  filter(numeroMesiValidi==6)->stazioniValide #6: i mesi tra lueglio e dicembre (2018)
+```
+
+## Completezza delle serie
+
+Prendiamo in esame solo le centraline che hanno almeno `r params$MIN.NUMBER.DAILY` dati validi per ogni mese nel corso del periodo luglio-dicembre 2018.
+
+Numero di centraline che soddisfano il criterio di completezza: `r nrow(stazioniValide)`
+
+
+```{r filtraDati,include=FALSE}
+dati %>%
+  filter(id_centralina %in% stazioniValide$id_centralina)->dati
+
+stopifnot(length(stazioniValide$id_centralina)==length(unique(dati$id_centralina)))
+
+dati[!duplicated(dati$id_centralina),]->sfStazioni
+st_as_sf(sfStazioni,coords = c("X","Y"),crs=32632)->sfStazioni
+```
+
+```{r eliminaStazioniIsole}
+#eliminiamo le stazioni nelle isole
+readRDS("../../archivio/gadm36_ITA_1_sf_originale_senzaIsolette.rds")->italia
+st_transform(italia,crs=32632)->italia
+st_intersection(sfStazioni,italia)->intersezioni
+intersezioni->sfStazioni
+rm(intersezioni)
+
+#ripetiamo la stessa operazione ora con il raster del dem, eliminiamo le stazioni chenon intersecano #il raster.Nota: nel raster compaiono le isole, quindi con questa intersezione mi sto assicurando di 
+#eliminare le stazioni che, pur rientrando nella linea di costa (ovvero valide per l'intersezione con
+# lo shapefile dell'Italia), sono valide per l'interpolazione. Uso il "dem" cosi come avrei potuto
+#usare un qualsiasi altro raster che serve per creare le mappe
+as_Spatial(sfStazioni)->spStazioni
+raster::extract(dem,spStazioni)->risExtract
+which(is.na(risExtract))->indiceNA
+#indiceNA ha lunghezza 0, quindi nessuna stazioneva eliminata.
+#Nelcaso non avesse lunghezza == 0 ilcodice qui sotto ce lo ricorda.
+#Il fatto che indiceNA abbia lunghezza==0 conferma quanto gia' fatto per acquisire il dem dai 
+#dati raster (ovvero: il campo: q_dem.s gia compare in dati,e nessun elemento in dati ha q_dem.s==NA)
+if(length(indiceNA)) stop("Devi aggiungere il codice per eliminare le stazioni")
+```
+
+```{r,eliminoStazioniTroppoVicine}
+#voglio eliminare le stazioni che cadono nella stessa cella. Tengo per due o piu' centraline
+#nella stessa cella, solo una stazione. Arrivati a questo punto tutte le stazioni gia'
+#soddisfano i criteri di completezza. Estraggo il numero di cella (cellnumber) e conto quante volte
+#questo compare: se compare piu' volte ho centraline associate alla stessa cella 1km x 1km
+raster::extract(dem,spStazioni,cellnumber=TRUE,buffer=NULL,df=TRUE)->dfExtract
+bind_cols(sfStazioni,dfExtract)->dfExtract
+
+st_geometry(dfExtract)<-NULL
+dfExtract %>%
+  group_by(cells) %>%
+  summarise(numeroStazioniPerCella=n()) %>%
+  ungroup()->conteggioStazioniPerCella
+
+skimr::skim(conteggioStazioniPerCella$numeroStazioniPerCella)
+
+conteggioStazioniPerCella %>%
+  filter(numeroStazioniPerCella>1)->celleConPiuStazioni
+
+#riprendiamo il dataset dei punti stazioni ed estraiamo solo le stazioni che cadono nella stessa cella
+dfExtract %>%
+  filter(cells %in% celleConPiuStazioni$cells)->stazioniNellaStessaCella
+
+#ora con duplicated, elimino le stazioni che cascano nella stessa cella.
+#Non seguiamo nessun criterio specifico per scegliere l'una o l'latra stazione, per ogni cella 
+#prendo la prima stazione che trovo secondo l ordine del dataframe
+
+stazioniNellaStessaCella[!duplicated(stazioniNellaStessaCella$cell),]->stazioniSelezionate
+stopifnot(nrow(stazioniSelezionate)==nrow(celleConPiuStazioni))
+
+#prendiamo id_centralina delle stazioni che NON cadono della stessa cella di altre stazioni
+dfExtract %>%
+  filter(!(id_centralina %in% stazioniNellaStessaCella$id_centralina))->dfTEMP
+
+#creiamo un vettore in cui mettiamo solo gli id_centralina che ci interessano
+c(dfTEMP$id_centralina,stazioniSelezionate$id_centralina)->IDCENTRALINA
+
+dati %>%
+  filter(id_centralina %in% IDCENTRALINA)->dati
+
+length(unique(dati$id_centralina))->NUMERO.CENTRALINE
+
+rm(sfStazioni)
+rm(dfExtract)
+```
+
+### Centraline che non cadono nella stessa cella di griglia
+
+Le centraline potrebbero: cadere in un'isola, cadere in una cella di griglia in cui i predittori hanno valore NA oppure appartenere a una stessa cella di griglia. Le stazioni che rientrano in uno dei tre casi sopra elencati sono state eliminate. In particolare: per le stazioni che cadono in una stessa cella di griglia, si e' tenuta una sola stazione per cella.
+
+Numero di centraline che soddisfano i requisiti spaziali: `r NUMERO.CENTRALINE`
+
+
+
+### Mappa delle centraline
+
+```{r mappaCentraline,fig.width=12,fig.height=8}
+dati[!duplicated(dati$id_centralina),]->sfStazioni
+st_as_sf(sfStazioni,coords = c("X","Y"),crs=32632)->sfStazioni
+
+#con l'occasione associo cod_reg
+as_Spatial(sfStazioni)->spStazioni
+raster::extract(cod_reg,spStazioni)->codregExtract
+sfStazioni$cod_reg<-codregExtract
+
+full_join(dati,sfStazioni %>% dplyr::select(id_centralina,cod_reg))->dati
+
+plot(st_geometry(italia))
+plot(st_geometry(sfStazioni),add=TRUE,pch=21,col="red")
+```
+
+### Distribuzione delle centralina per quota (altitudine)
+
+```{r}
+sfStazioni->dfUniche
+st_geometry(dfUniche)<-NULL
+skimr::skim(dfUniche$q_dem)
+```
+
+### Stazioni al di sopra dei 1000 metri
+
+```{r}
+knitr::kable(dfUniche[dfUniche$q_dem>=1000,])
+```
+
+### Distribuzione centraline per tipologia stazione (Tipo area)
+
+```{r}
+table(dfUniche$tipo_new)
+```
+
+
+### Distribuzione stazioni per tipologia e quota
+
+```{r}
+skimr::skim(dfUniche %>% dplyr::select(tipo_new,q_dem) %>% group_by(tipo_new))
+```
+
+```{r,include=FALSE}
+dati->subDati
+rm(dati)
+subDati %>%
+  mutate(mm=lubridate::month(yymmdd)) %>%
+  mutate(mese=month.abb[mm]) %>%
+  mutate(mese=factor(mese,levels=month.abb,ordered=TRUE))->subDati
+```
+
+### Descrizione dei valori di PM10
+
+```{r}
+skimr::skim(subDati %>% dplyr::select(pm10,tipo_new) %>%group_by(tipo_new))
+```
+
+Attenzione: c' un valore di 852 microgrammi/m^3. Lo elimino e rigenero il summary
+
+```{r}
+subDati[which(subDati$pm10>800),]$pm10<-NA
+skimr::skim(subDati %>% dplyr::select(pm10,tipo_new) %>%group_by(tipo_new))
+```
+
+### Distribuzione mensile dei valori di PM10
+
+```{r,fig.width=10}
+ggplot(data=subDati)+
+  geom_boxplot(aes(x=mese,y=pm10))+
+  theme_bw()
+```
+
+### Distribuzione mensile dei valori di PM10 per tipologia di stazione
+
+```{r,fig.width=10}
+ggplot(data=subDati)+
+  geom_boxplot(aes(x=mese,y=pm10))+
+  facet_wrap(~tipo_new)+
+  theme_bw()
+```
+
+### Quanti dati (non NA) sono disponibili per stazione?
+
+```{r,include=FALSE}
+subDati %>%
+  filter(!is.na(pm10))->subDatiSenzaNA
+
+subDatiSenzaNA %>%
+  group_by(id_centralina,mese)%>%
+  summarise(numeroDatiValidi=n()) %>%
+  ungroup()->conteggioDatiValidi
+```
+
+```{r}
+skimr::skim(conteggioDatiValidi %>% group_by(mese))
+```
+
+### Distanza media tra le stazioni per regione
+
+```{r,include=FALSE}
+st_distance(sfStazioni,by_element = FALSE)->distanze
+as.data.frame(distanze)->dfDistanze
+names(dfDistanze)<-paste(sfStazioni$id_centralina,sfStazioni$cod_reg,sep=".")
+dfDistanze$id_centralina<-sfStazioni$id_centralina
+dfDistanze$cod_reg<-sfStazioni$cod_reg
+
+dfDistanze %>%
+  gather(key="id_centralina2",value="distanze",-id_centralina,-cod_reg) %>%
+  separate(col=id_centralina2,into=c("id_centralina0","cod_reg0"),sep="\\.")%>%
+  mutate(distanze=as.numeric(distanze)) %>%
+  filter(id_centralina!=id_centralina0) %>%
+  filter(cod_reg==cod_reg0)->dfDistanze
+```
+
+```{r}
+skimr::skim(dfDistanze %>% mutate(distanze=distanze/1000) %>% group_by(cod_reg))
+```
+
+```{r scritturaNuovoDataset}
+subDati$geometry<-NULL
+write_vc(subDati,root="./risultati_modello_lmm_2018/data/",file="pm10_dati_con_predittori2_2018_04agosto2020.tsv",optimize=TRUE,sorting=c("id_centralina","banda"))->dati
+```
