@@ -1,0 +1,87 @@
+---
+title: Variogrammi spazio-temporali
+author: Guido
+date: "`r lubridate::today()`"
+---
+
+```{r,include=FALSE,echo=FALSE,warning=FALSE,message=FALSE}
+rm(list=objects())
+library("lme4")
+library("tidyverse")
+library("gstat")
+library("git2rdata")
+library("spacetime")
+
+read_vc(root="risultati_modello_lmm_2018/data/",file="pm10_dati_con_predittori2_2018_04agosto2020")->dati
+
+unique(dati$id_centralina)->IDCENTRALINA
+sample(IDCENTRALINA,size = 12)->SAMPLE.IDCENTRALINA
+
+
+purrr::map(7:12,.f=function(MESE){
+
+dati %>%
+  filter(mm==MESE) %>%
+  filter(!is.na(lpm10)) %>%
+  mutate(mday=lubridate::mday(yymmdd))->subDati
+
+readRDS(glue::glue("result{MESE}.RDS"))->modello.out
+residuals(modello.out)->subDati$lresidual
+fitted(modello.out)->subDati$lfitted
+
+
+# ggplot(data=subDati %>% filter(id_centralina %in% SAMPLE.IDCENTRALINA),aes(x=mday,y=res))+
+#   geom_line()+
+#   geom_hline(yintercept = 0,colour="#000000")+
+#   geom_smooth(method="lm")+
+#   facet_wrap(~id_centralina,scales = "free_y")+
+#   theme_bw()+
+#   theme(text=element_text(family="Lato"),
+#         panel.grid = element_blank())
+
+
+stConstruct(x=subDati,space=c("X","Y"),time="yymmdd",SpatialObj = SpatialPoints(subDati[,c("X","Y")]))->STFDF_pm10
+as(STFDF_pm10,"STFDF")->STFDF_pm10
+variogram(lpm10~1,STFDF_pm10,width=50000,cutoff=250000,tlags=0:7)->myVariogram
+variogram(lresidual~1,STFDF_pm10,width=50000,cutoff=250000,tlags=0:7)->myVariogramResiduals
+
+myVariogram$dati<-"observations"
+myVariogramResiduals$dati<-"residuals"
+
+bind_rows(myVariogram,myVariogramResiduals)->dfVariogramma
+
+dfVariogramma %>%
+  mutate(id2=str_replace(id,"lag","")) %>%
+  mutate(id2=str_replace(id2,"$"," days")) %>%
+  mutate(id2=case_when(id2=="1 days"~"1 day",
+                       TRUE~id2))->dfVariogramma
+
+dfVariogramma$mm<-MESE
+
+dfVariogramma
+
+}) %>% reduce(.f=bind_rows)->finale
+
+finale %>%
+  mutate(mese=month.name[mm]) %>%
+  mutate(mese=factor(mese,levels = month.name,ordered = TRUE,labels = month.name))->finale
+```
+
+### Variogrammi dei dati osservati e dei residui
+
+Utilizzando i pacchetti gstat e spacetime sono stati costruiti i variogrammi empirici per i dati osservati in scala log (linee continue) e per i residui del modello (linee tratteggiate). Ancora evidente la correlazione spazio-temporale dei residui.
+
+```{r,warning=TRUE,message=FALSE,echo=FALSE,fig.width=10,fig.height=10}
+ggplot(data=finale)+
+  geom_line(aes(x=spacelag,y=gamma,colour=id2,lty=dati))+
+  xlab("distance (km)")+
+  ylab("semivariance")+
+  facet_wrap(~mese,scales = "free_y",ncol = 3)+
+  scale_x_continuous(breaks =seq(0,225000,by=25000),labels=seq(0,225,by=25))+
+  scale_colour_viridis_d(name="Time lag")+
+  scale_linetype_discrete(name="Data")+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.y = element_blank())

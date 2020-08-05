@@ -11,4 +11,6 @@ I dati di input riguardano il periodo che va dal 1 Luglio al 31 Dicembre 2018, o
 
 ## Risultati del modello
 
-Sono stati elaborati 6 modello mensili (per i mesi da Luglio a Dicembre) utilizzando lo stesso set di covariate. Le stime degli effetti fissi, i relativi grafici e le stime della standard deviation dei random effects sono disponibili [qui](./covariate.html)
+Sono stati elaborati 6 modello mensili (per i mesi da Luglio a Dicembre) utilizzando lo stesso set di covariate. Le stime degli effetti fissi, i relativi grafici e le stime della standard deviation dei random effects sono disponibili [qui](./covariate.html).
+
+Per valutare la correlazione dei residui nel tempo e nello spazio sono stati costruiti variogrammi spazio-temporali sia per i dati osservati (in scala log) che per i residui del modello. I grafici sono riportati in [questa pagina](./variogrammi.html).
