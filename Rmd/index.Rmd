@@ -8,3 +8,7 @@ output: html_document
 ## Descrizione dei dati di input
 
 I dati di input riguardano il periodo che va dal 1 Luglio al 31 Dicembre 2018, ovvero il periodo coperto dai file netCDF forniti dall'ARPA Emilia Romagna. Si osservi che i file netCDF contengono dei buchi temporali (ad esempio, i mesi di Luglio e Ottobre sono gli unici due mesi ad essere provvisti di dati per il 31 del mese). La [descrizione](./descrizioneDatiInput.html) fornita si riferisce ai dati delle stazioni di monitoraggio, includendo solo i giorni presenti nei file netCDF.
+
+## Risultati del modello
+
+Sono stati elaborati 6 modello mensili (per i mesi da Luglio a Dicembre) utilizzando lo stesso set di covariate. Le stime degli effetti fissi, i relativi grafici e le stime della standard deviation dei random effects sono disponibili [qui](./covariate.html)

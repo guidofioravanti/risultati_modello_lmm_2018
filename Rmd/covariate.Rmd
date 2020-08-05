@@ -1,0 +1,53 @@
+---
+title: Effetti mensili delle covariate
+author: Guido
+date: "`r lubridate::today()`"
+---
+
+
+```{r intro,include=FALSE,warning=FALSE,message=FALSE,echo=FALSE}
+rm(list=objects())
+library("tidyverse")
+library("gt")
+
+read_delim("effettiCovariate.csv",delim=";",col_names=TRUE) %>%
+  dplyr::select(-statistic) %>%
+  mutate(mmName=month.name[mm]) %>%
+  mutate(mmName=factor(mmName,levels = mmName,labels=mmName,ordered=TRUE))->dati
+
+dati %>%
+  mutate(estimate=round(estimate,2),std.error=round(std.error,3)) %>%
+  mutate(beta=paste0(estimate," (",std.error,")")) %>%
+  dplyr::select(-estimate,-std.error,-group,-mm) %>%
+  spread(key=mmName,value=beta)->datiSpread
+```
+
+### Effetti fissi
+
+Stima mensile degli effetti fissi, tra parentesi lo standard error.
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+gt(datiSpread %>% filter(!grepl("^sd.+",term)),rowname_col = "term")
+```
+
+### Random effects
+
+Variabilita' dei random effects e variabilita' residua.
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+gt(datiSpread %>% filter(grepl("^sd.+",term)),rowname_col = "term")
+```
+
+### Andamento mensile effetti fissi
+
+Grafico dell'andamento mensile della stima degli effetti fissi del modello.
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE,fig.width=10,fig.height=8}
+ggplot(data=dati %>% filter(!grepl("^sd.+",term)),aes(x=mm,y=estimate))+
+  geom_line()+
+  scale_x_continuous(labels=month.abb[7:12])+
+  facet_wrap(~term,scales = "free_y")+
+  theme_bw()+
+  theme(text=element_text(family="Lato"),
+        panel.grid = element_blank())
+```
