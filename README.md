@@ -56,3 +56,20 @@ write_delim(df,path="effettiCovariate.csv",delim=";",col_names=TRUE)
 
 Una descrizione dei dati di input e dei risultati relativi all'analisi del modello sono 
 [qui](https://guidofioravanti.github.io/risultati_modello_lmm_2018/index.html) riportati.
+
+
+### ATTENZIONE
+
+I dati di input **non coprono** tutto il periodo luglio-dicembre 2018! Si veda la tabella qui sotto.
+
+| Mese | Numero di giorni disponibili |
+| --- | --- |
+| Luglio | 26 |
+| Agosto | 24 |
+| Settembre | 27 |
+| Ottobre | 30 |
+| Novembre | 30 |
+| Dicembre | 28 |
+| --- | --- |
+
+
