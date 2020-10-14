@@ -70,6 +70,5 @@ I dati di input **non coprono** tutto il periodo luglio-dicembre 2018! Si veda l
 | Ottobre | 30 |
 | Novembre | 30 |
 | Dicembre | 28 |
-| --- | --- |
 
 
